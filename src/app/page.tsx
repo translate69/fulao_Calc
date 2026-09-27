@@ -17,38 +17,41 @@ import {
 } from '@/lib/calc';
 
 const LS_KEY = 'hotpot-v2';
+const LS_VERSION = 3; // 数据结构变更时 +1，强制重置 localStorage
 
 interface SavedState {
   suppliers: Supplier[];
   ingredients: IngredientNew[];
   meals: MealNew[];
   activeSupplierId: string;
+  version?: number;
 }
 
+const defaultState = (): SavedState => ({
+  suppliers: DEFAULT_SUPPLIERS,
+  ingredients: DEFAULT_INGREDIENTS,
+  meals: DEFAULT_MEALS_NEW,
+  activeSupplierId: 's1',
+  version: LS_VERSION,
+});
+
 function loadState(): SavedState {
-  if (typeof window === 'undefined') {
-    return {
-      suppliers: DEFAULT_SUPPLIERS,
-      ingredients: DEFAULT_INGREDIENTS,
-      meals: DEFAULT_MEALS_NEW,
-      activeSupplierId: 's1',
-    };
-  }
+  if (typeof window === 'undefined') return defaultState();
   try {
     const raw = localStorage.getItem(LS_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // 版本不匹配 → 重置为默认数据
+      if (parsed.version !== LS_VERSION) return defaultState();
+      return parsed;
+    }
   } catch {}
-  return {
-    suppliers: DEFAULT_SUPPLIERS,
-    ingredients: DEFAULT_INGREDIENTS,
-    meals: DEFAULT_MEALS_NEW,
-    activeSupplierId: 's1',
-  };
+  return defaultState();
 }
 
 function saveState(s: SavedState) {
   try {
-    localStorage.setItem(LS_KEY, JSON.stringify(s));
+    localStorage.setItem(LS_KEY, JSON.stringify({ ...s, version: LS_VERSION }));
   } catch {}
 }
 
