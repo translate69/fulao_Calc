@@ -530,20 +530,16 @@ function MealsView(props: {
   const bestSupplier = allComparisons.reduce((best, cur) =>
     cur.result.mReal > best.result.mReal ? cur : best
   , allComparisons[0]);
-  const worstSupplier = allComparisons.reduce((worst, cur) =>
-    cur.result.mReal < worst.result.mReal ? cur : worst
-  , allComparisons[0]);
 
   // 排序后的对比：毛利率从高到低
   const sortedComparisons = [...allComparisons].sort((a, b) => b.result.mReal - a.result.mReal);
   const maxMargin = Math.max(...allComparisons.map((c) => c.result.mReal), 0.01);
-  const [dailySets, setDailySets] = useState(30);
-  const monthlyDays = 30;
-  const bestNetProfit = bestSupplier.result.P - bestSupplier.result.costTotal;
-  const curComparison = allComparisons.find((c) => c.supplier.id === curSupplierId);
-  const curNetProfit = curComparison ? curComparison.result.P - curComparison.result.costTotal : 0;
-  const monthlySaveVsWorst = Math.max(0, (bestNetProfit - (worstSupplier.result.P - worstSupplier.result.costTotal)) * dailySets * monthlyDays);
-  const monthlySaveVsCurrent = Math.max(0, (bestNetProfit - curNetProfit) * dailySets * monthlyDays);
+
+  // 所有套餐的毛利一览（当前供应商下）
+  const allMealsMargin = state.meals.map((m) => {
+    const r = computeMeal(m, state.ingredients, curSupplierId);
+    return { meal: m, result: r };
+  });
 
   return (
     <div className="panel">
@@ -601,46 +597,6 @@ function MealsView(props: {
           })}
         </div>
 
-        {/* 省钱计算器 */}
-        <div className="save-calc">
-          <div className="save-calc-head">
-            <span>💡 省钱计算器</span>
-            <label className="daily-input">
-              每天卖出
-              <input
-                type="number"
-                min="0"
-                value={dailySets}
-                onChange={(e) => setDailySets(parseInt(e.target.value) || 0)}
-              />
-              份
-            </label>
-          </div>
-          <div className="save-calc-body">
-            <div className="save-item">
-              <div className="save-label">
-                用 <strong>{bestSupplier.supplier.name}</strong>（毛利最高）
-                <br />相比 <strong>{worstSupplier.supplier.name}</strong>（毛利最低）
-              </div>
-              <div className="save-amount">
-                <div className="save-num gold">省 {fmt(monthlySaveVsWorst)}</div>
-                <div className="save-sub">/ 月（按 {monthlyDays} 天算）</div>
-              </div>
-            </div>
-            {curSupplierId !== bestSupplier.supplier.id && curSupplierId !== '' && (
-              <div className="save-item highlight">
-                <div className="save-label">
-                  你当前用的是 <strong>{curComparison?.supplier.name}</strong>
-                  <br />如果换成 <strong>{bestSupplier.supplier.name}</strong>
-                </div>
-                <div className="save-amount">
-                  <div className="save-num green">每月多赚 {fmt(monthlySaveVsCurrent)}</div>
-                  <div className="save-sub">每份多赚 {fmt(bestNetProfit - curNetProfit)}</div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
       </div>
 
       {/* 毛利对比卡片 */}
@@ -680,6 +636,50 @@ function MealsView(props: {
             </div>
           );
         })}
+      </div>
+
+      {/* ===== 📋 所有套餐毛利率一览 ===== */}
+      <div className="all-meals-panel">
+        <div className="all-meals-head">
+          <h3>📋 所有套餐毛利率一览</h3>
+          <span className="hint-inline">当前供应商：{state.suppliers.find((s) => s.id === curSupplierId)?.name}</span>
+        </div>
+        <div className="all-meals-bars">
+          {allMealsMargin.map(({ meal: m, result: r }, i) => {
+            const isCur = i === curMeal;
+            const marginW = Math.max(Math.min(r.mReal * 100, 100), 0);
+            return (
+              <div
+                key={m.id}
+                className={'meal-margin-row ' + (isCur ? 'cur' : '')}
+                onClick={() => setCurMeal(i)}
+              >
+                <div className="mmr-name">
+                  <strong>{m.name}</strong>
+                  {isCur && <span className="mmr-tag">当前</span>}
+                </div>
+                <div className="mmr-track">
+                  <div
+                    className={'mmr-fill ' + (r.mReal >= 0.6 ? 'green' : r.mReal >= 0.4 ? 'yellow' : 'red')}
+                    style={{ width: marginW + '%' }}
+                  />
+                </div>
+                <div className="mmr-nums">
+                  <span className={'mmr-margin ' + (r.mReal >= 0.5 ? 'g' : 'r')}>
+                    {pct(r.mReal)}
+                  </span>
+                  <span className="mmr-net">净利 {fmt(r.P - r.costTotal)}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="all-meals-legend">
+          <span><i className="dot green" /> ≥60%</span>
+          <span><i className="dot yellow" /> 40~60%</span>
+          <span><i className="dot red" /> ＜40%</span>
+          <span className="hint-inline">点击任一行切换到该套餐</span>
+        </div>
       </div>
 
       {/* 套餐基本信息 */}
@@ -1320,6 +1320,101 @@ const STYLES = `
   .save-num.green { color: #059669; }
   .save-sub { font-size: 11.5px; color: var(--sub); margin-top: 2px; }
 
+  /* ===== 所有套餐毛利率一览 ===== */
+  .all-meals-panel {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .all-meals-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .all-meals-head h3 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .all-meals-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .meal-margin-row {
+    display: grid;
+    grid-template-columns: 200px 1fr 140px;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .meal-margin-row:hover { background: #f9fafb; }
+  .meal-margin-row.cur { background: var(--brand-soft); border: 1px solid #fecaca; }
+  .mmr-name { font-size: 13px; }
+  .mmr-name strong { color: var(--ink); }
+  .mmr-tag {
+    margin-left: 6px;
+    background: var(--brand);
+    color: #fff;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-weight: 600;
+  }
+  .mmr-track {
+    height: 20px;
+    background: #f3f4f6;
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  .mmr-fill {
+    height: 100%;
+    border-radius: 5px;
+    transition: width .3s ease;
+  }
+  .mmr-fill.green { background: linear-gradient(90deg, #10b981, #059669); }
+  .mmr-fill.yellow { background: linear-gradient(90deg, #fbbf24, #f59e0b); }
+  .mmr-fill.red { background: linear-gradient(90deg, #f87171, #dc2626); }
+  .mmr-nums {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    font-size: 12px;
+  }
+  .mmr-margin { font-weight: 700; font-size: 14px; }
+  .mmr-margin.g { color: var(--green); }
+  .mmr-margin.r { color: var(--brand); }
+  .mmr-net { color: var(--sub); }
+  .all-meals-legend {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--sub);
+    flex-wrap: wrap;
+  }
+  .dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 5px;
+    vertical-align: middle;
+  }
+  .dot.green { background: #059669; }
+  .dot.yellow { background: #f59e0b; }
+  .dot.red { background: #dc2626; }
+
   /* ===== Tab 2：套餐 ===== */
   .meal-header { margin-bottom: 12px; }
   .header-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -1463,6 +1558,7 @@ const STYLES = `
     .header-row label.ml { margin-left: 0; }
     .hero-bar { grid-template-columns: 100px 1fr 110px; }
     .hero-bar-name { font-size: 12px; }
-    .save-calc-body { grid-template-columns: 1fr; }
+    .meal-margin-row { grid-template-columns: 130px 1fr 100px; }
+    .mmr-name { font-size: 12px; }
   }
 `;
