@@ -60,9 +60,12 @@ const pct = (x: number) => ((x || 0) * 100).toFixed(1) + '%';
 
 // ======== 主页面 ========
 export default function HotpotV2() {
-  const [tab, setTab] = useState<'ingredients' | 'meals'>('ingredients');
+  const [tab, setTab] = useState<'ingredients' | 'meals' | 'overview'>('ingredients');
   const [state, setState] = useState<SavedState>(() => loadState());
   const [curSupplierId, setCurSupplierId] = useState<string>(
+    state.activeSupplierId || state.suppliers[0]?.id || ''
+  );
+  const [overviewSupplierId, setOverviewSupplierId] = useState<string>(
     state.activeSupplierId || state.suppliers[0]?.id || ''
   );
   const [curMeal, setCurMeal] = useState(0);
@@ -93,6 +96,12 @@ export default function HotpotV2() {
         >
           💰 套餐毛利计算
         </button>
+        <button
+          className={'tab ' + (tab === 'overview' ? 'on' : '')}
+          onClick={() => setTab('overview')}
+        >
+          📊 套餐毛利情况
+        </button>
       </div>
 
       {tab === 'ingredients' ? (
@@ -104,7 +113,7 @@ export default function HotpotV2() {
           comboExpanded={comboExpanded}
           setComboExpanded={setComboExpanded}
         />
-      ) : (
+      ) : tab === 'meals' ? (
         <MealsView
           state={state}
           setState={setState}
@@ -112,6 +121,15 @@ export default function HotpotV2() {
           setCurSupplierId={setCurSupplierId}
           curMeal={curMeal}
           setCurMeal={setCurMeal}
+        />
+      ) : (
+        <OverviewView
+          state={state}
+          overviewSupplierId={overviewSupplierId}
+          setOverviewSupplierId={setOverviewSupplierId}
+          curMeal={curMeal}
+          setCurMeal={setCurMeal}
+          onGotoMeals={() => setTab('meals')}
         />
       )}
 
@@ -535,12 +553,6 @@ function MealsView(props: {
   const sortedComparisons = [...allComparisons].sort((a, b) => b.result.mReal - a.result.mReal);
   const maxMargin = Math.max(...allComparisons.map((c) => c.result.mReal), 0.01);
 
-  // 所有套餐的毛利一览（当前供应商下）
-  const allMealsMargin = state.meals.map((m) => {
-    const r = computeMeal(m, state.ingredients, curSupplierId);
-    return { meal: m, result: r };
-  });
-
   return (
     <div className="panel">
       {/* 顶部：套餐选择 + 全局供应商 + 毛利对比 */}
@@ -636,50 +648,6 @@ function MealsView(props: {
             </div>
           );
         })}
-      </div>
-
-      {/* ===== 📋 所有套餐毛利率一览 ===== */}
-      <div className="all-meals-panel">
-        <div className="all-meals-head">
-          <h3>📋 所有套餐毛利率一览</h3>
-          <span className="hint-inline">当前供应商：{state.suppliers.find((s) => s.id === curSupplierId)?.name}</span>
-        </div>
-        <div className="all-meals-bars">
-          {allMealsMargin.map(({ meal: m, result: r }, i) => {
-            const isCur = i === curMeal;
-            const marginW = Math.max(Math.min(r.mReal * 100, 100), 0);
-            return (
-              <div
-                key={m.id}
-                className={'meal-margin-row ' + (isCur ? 'cur' : '')}
-                onClick={() => setCurMeal(i)}
-              >
-                <div className="mmr-name">
-                  <strong>{m.name}</strong>
-                  {isCur && <span className="mmr-tag">当前</span>}
-                </div>
-                <div className="mmr-track">
-                  <div
-                    className={'mmr-fill ' + (r.mReal >= 0.6 ? 'green' : r.mReal >= 0.4 ? 'yellow' : 'red')}
-                    style={{ width: marginW + '%' }}
-                  />
-                </div>
-                <div className="mmr-nums">
-                  <span className={'mmr-margin ' + (r.mReal >= 0.5 ? 'g' : 'r')}>
-                    {pct(r.mReal)}
-                  </span>
-                  <span className="mmr-net">净利 {fmt(r.P - r.costTotal)}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        <div className="all-meals-legend">
-          <span><i className="dot green" /> ≥60%</span>
-          <span><i className="dot yellow" /> 40~60%</span>
-          <span><i className="dot red" /> ＜40%</span>
-          <span className="hint-inline">点击任一行切换到该套餐</span>
-        </div>
       </div>
 
       {/* 套餐基本信息 */}
@@ -860,6 +828,124 @@ function MealsView(props: {
         · 所有数据自动保存到浏览器本地<br />
         · 切换供应商 = 一键切换整套餐的成本结构和毛利对比<br />
         · 未来可对接 Supabase 同步给团队
+      </div>
+    </div>
+  );
+}
+
+// ======== Tab 3：套餐毛利情况（所有套餐一览，可切换供应商） ========
+function OverviewView(props: {
+  state: SavedState;
+  overviewSupplierId: string;
+  setOverviewSupplierId: (id: string) => void;
+  curMeal: number;
+  setCurMeal: (i: number) => void;
+  onGotoMeals: () => void;
+}) {
+  const { state, overviewSupplierId, setOverviewSupplierId, curMeal, setCurMeal, onGotoMeals } = props;
+
+  const allMealsMargin = state.meals.map((m) => {
+    const r = computeMeal(m, state.ingredients, overviewSupplierId);
+    return { meal: m, result: r };
+  });
+
+  const curSupplier = state.suppliers.find((s) => s.id === overviewSupplierId);
+
+  return (
+    <div className="panel overview-panel">
+      <div className="overview-head">
+        <h2>📊 套餐毛利情况</h2>
+        <p className="hint">切换供应商，查看所有套餐在不同供应商下的毛利表现</p>
+      </div>
+
+      {/* 供应商子 Tab */}
+      <div className="supplier-tabs overview-supplier-tabs">
+        {state.suppliers.map((sp) => (
+          <button
+            key={sp.id}
+            className={'sp-tab ' + (overviewSupplierId === sp.id ? 'on' : '')}
+            onClick={() => setOverviewSupplierId(sp.id)}
+          >
+            {sp.name}
+          </button>
+        ))}
+      </div>
+
+      {/* 所有套餐毛利率条 */}
+      <div className="all-meals-bars">
+        {allMealsMargin.map(({ meal: m, result: r }, i) => {
+          const isCur = i === curMeal;
+          const marginW = Math.max(Math.min(r.mReal * 100, 100), 0);
+          return (
+            <div
+              key={m.id}
+              className={'meal-margin-row ' + (isCur ? 'cur' : '')}
+              onClick={() => { setCurMeal(i); onGotoMeals(); }}
+            >
+              <div className="mmr-name">
+                <strong>{m.name}</strong>
+                {isCur && <span className="mmr-tag">当前</span>}
+              </div>
+              <div className="mmr-track">
+                <div
+                  className={'mmr-fill ' + (r.mReal >= 0.6 ? 'green' : r.mReal >= 0.4 ? 'yellow' : 'red')}
+                  style={{ width: marginW + '%' }}
+                />
+              </div>
+              <div className="mmr-nums">
+                <span className={'mmr-margin ' + (r.mReal >= 0.5 ? 'g' : 'r')}>
+                  {pct(r.mReal)}
+                </span>
+                <span className="mmr-net">净利 {fmt(r.P - r.costTotal)}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="all-meals-legend">
+        <span><i className="dot green" /> ≥60%</span>
+        <span><i className="dot yellow" /> 40~60%</span>
+        <span><i className="dot red" /> ＜40%</span>
+        <span className="hint-inline">点击任一行进入该套餐明细</span>
+      </div>
+
+      {/* 详细对比表 */}
+      <div className="overview-table-wrap">
+        <table className="overview-table">
+          <thead>
+            <tr>
+              <th>套餐</th>
+              <th>团购价</th>
+              <th>食材成本</th>
+              <th>实际毛利率</th>
+              <th>净利率</th>
+              <th>每套净利</th>
+            </tr>
+          </thead>
+          <tbody>
+            {allMealsMargin.map(({ meal: m, result: r }, i) => (
+              <tr key={m.id} className={i === curMeal ? 'cur-row' : ''}>
+                <td>
+                  <button className="link-btn" onClick={() => { setCurMeal(i); onGotoMeals(); }}>
+                    {m.name}
+                  </button>
+                </td>
+                <td>{fmt(r.P)}</td>
+                <td>{fmt(r.fr)}</td>
+                <td className={r.mReal >= 0.5 ? 'g' : 'r'}>{pct(r.mReal)}</td>
+                <td className={r.mNet >= 0.2 ? 'g' : 'r'}>{pct(r.mNet)}</td>
+                <td><strong>{fmt(r.P - r.costTotal)}</strong></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="note">
+        当前供应商：<strong>{curSupplier?.name}</strong><br />
+        · 毛利条颜色：绿 ≥60% / 黄 40~60% / 红 ＜40%<br />
+        · 点击套餐名或毛利条可跳转到该套餐的编辑页面
       </div>
     </div>
   );
@@ -1414,6 +1500,49 @@ const STYLES = `
   .dot.green { background: #059669; }
   .dot.yellow { background: #f59e0b; }
   .dot.red { background: #dc2626; }
+
+  /* ===== Tab 3：套餐毛利情况 ===== */
+  .overview-head h2 { margin: 0 0 4px; font-size: 16px; }
+  .overview-head .hint { margin: 0 0 14px; }
+  .overview-supplier-tabs { margin-bottom: 14px; }
+  .overview-table-wrap {
+    margin-top: 16px;
+    overflow-x: auto;
+  }
+  .overview-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .overview-table th, .overview-table td {
+    padding: 10px 12px;
+    text-align: center;
+    border-bottom: 1px solid var(--line);
+  }
+  .overview-table th {
+    background: #fafafa;
+    font-weight: 600;
+    color: var(--sub);
+    font-size: 12px;
+  }
+  .overview-table td:first-child { text-align: left; }
+  .overview-table .cur-row { background: var(--brand-soft); }
+  .overview-table .g { color: var(--green); font-weight: 700; }
+  .overview-table .r { color: var(--brand); font-weight: 700; }
+  .link-btn {
+    background: none;
+    border: none;
+    color: var(--brand);
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+    font-size: 13px;
+    text-align: left;
+  }
+  .link-btn:hover { text-decoration: underline; }
 
   /* ===== Tab 2：套餐 ===== */
   .meal-header { margin-bottom: 12px; }
