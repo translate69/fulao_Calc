@@ -762,21 +762,32 @@ function MealsView(props: {
               const ing = state.ingredients.find((i) => i.id === it.ingredientId);
               const curSupplier = state.suppliers.find((s) => s.id === curSupplierId);
               let itemCost = 0;
-              if (ing && curSupplier && ing.prices?.[curSupplierId]) {
-                const priceInfo = ing.prices[curSupplierId];
+              let noPrice = false;
+              if (ing && curSupplier) {
                 if (ing.isCombo && ing.subRecipe) {
+                  // 组合食材：按子食材配方算（不需要自身有 prices）
                   itemCost = mealFoodCost([it], state.ingredients, curSupplierId);
-                } else {
+                  const hasAnyPrice = ing.subRecipe.some((sub) => {
+                    const subIng = state.ingredients.find((i) => i.id === sub.ingredientId);
+                    return subIng?.prices?.[curSupplierId]?.price;
+                  });
+                  noPrice = !hasAnyPrice && !it.cost;
+                } else if (ing.prices?.[curSupplierId]) {
+                  // 普通食材
+                  const priceInfo = ing.prices[curSupplierId];
                   itemCost = ingredientCost(
                     priceInfo.price, priceInfo.unit,
                     it.qty || 0, it.qtyUnit || 'g',
                     ing.yieldRate || 1
                   );
+                } else if (it.cost) {
+                  itemCost = it.cost;
+                } else {
+                  noPrice = true;
                 }
               } else if (it.cost) {
                 itemCost = it.cost;
               }
-              const noPrice = ing && curSupplier && !ing.prices?.[curSupplierId] && !it.cost;
               return (
                 <tr key={idx} className={noPrice ? 'warn-row' : ''}>
                   <td>
