@@ -976,17 +976,18 @@ const STYLES = `
   h1 { font-size: 22px; margin: 0 0 12px; }
 
   /* Tab 切换 */
-  .tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
   .tab {
-    padding: 10px 18px;
+    padding: 8px 14px;
     border: 1px solid var(--line);
-    border-radius: 10px 10px 2px 2px;
+    border-radius: 8px;
     background: #fff;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
     color: var(--sub);
     cursor: pointer;
     transition: all .15s;
+    white-space: nowrap;
   }
   .tab.on {
     background: var(--brand);
@@ -1678,8 +1679,12 @@ const STYLES = `
 
   /* 响应式 */
   @media (max-width: 768px) {
-    .tabs { flex-direction: column; }
-    .tab { border-radius: 10px; }
+    .tabs { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+    .tab {
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 13px;
+    }
     body { padding: 12px; }
     .panel { padding: 12px; border-radius: 12px; }
     .compare-cards { grid-template-columns: 1fr 1fr; }
